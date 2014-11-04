@@ -103,29 +103,29 @@ App::App(ros::NodeHandle node_, bool send_ground_truth_) :
   }
 
   // Atlas Joints and FT sensor
-  joint_states_sub_ = node_.subscribe(string("/controller_mgr/joint_states"), 1, &App::joint_states_cb,this);
+  joint_states_sub_ = node_.subscribe(string("/controller_mgr/joint_states"), 100, &App::joint_states_cb,this);
 
   // The position and orientation from BDI's own estimator (or GT from Gazebo):
   if (send_ground_truth_){
-    pose_bdi_sub_ = node_.subscribe(string("/ground_truth_odom"), 1, &App::pose_bdi_cb,this);
+    pose_bdi_sub_ = node_.subscribe(string("/ground_truth_odom"), 100, &App::pose_bdi_cb,this);
   }else{
-    pose_bdi_sub_ = node_.subscribe(string("/controller_mgr/odom"), 1, &App::pose_bdi_cb,this);
+    pose_bdi_sub_ = node_.subscribe(string("/controller_mgr/odom"), 100, &App::pose_bdi_cb,this);
   }
-  pose_vicon_sub_ = node_.subscribe(string("/vicon/pelvis"), 1, &App::pose_vicon_cb,this);
+  pose_vicon_sub_ = node_.subscribe(string("/vicon/pelvis"), 100, &App::pose_vicon_cb,this);
 
 
   // Multisense Joint Angles:
-  head_joint_states_sub_ = node_.subscribe(string("/spindle_state"), 1, &App::head_joint_states_cb,this);
+  head_joint_states_sub_ = node_.subscribe(string("/spindle_state"), 100, &App::head_joint_states_cb,this);
 
   // Laser:
-  rotating_scan_sub_ = node_.subscribe(string("/multisense_sl/laser/scan"), 1, &App::rotating_scan_cb,this);
+  rotating_scan_sub_ = node_.subscribe(string("/multisense_sl/laser/scan"), 100, &App::rotating_scan_cb,this);
 
   // LM:
-  foot_sensor_sub_ = node_.subscribe(string("/controller_mgr/foot_sensor"), 1, &App::foot_sensor_cb,this);
-  imu_sub_ = node_.subscribe(string("/controller_mgr/imu"), 1, &App::imu_cb,this);
-  imu_batch_sub_ = node_.subscribe(string("/controller_mgr/raw_imu"), 1, &App::imu_batch_cb,this);
+  foot_sensor_sub_ = node_.subscribe(string("/controller_mgr/foot_sensor"), 100, &App::foot_sensor_cb,this);
+  imu_sub_ = node_.subscribe(string("/controller_mgr/imu"), 100, &App::imu_cb,this);
+  imu_batch_sub_ = node_.subscribe(string("/controller_mgr/raw_imu"), 100, &App::imu_batch_cb,this);
 
-  behavior_sub_ = node_.subscribe(string("/controller_mgr/current_behavior"), 1, &App::behavior_cb,this);
+  behavior_sub_ = node_.subscribe(string("/controller_mgr/current_behavior"), 100, &App::behavior_cb,this);
   verbose_ = false;
 };
 
@@ -226,7 +226,7 @@ void App::pose_bdi_cb(const nav_msgs::OdometryConstPtr& msg){
   pose_msg.accel[2] = imu_msg_.linear_acceleration.z;
 
   lcm_publish_.publish("POSE_BDI", &pose_msg);   
-  lcm_publish_.publish("POSE_BODY", &pose_msg);    // for now
+ // lcm_publish_.publish("POSE_BODY", &pose_msg);    // for now
 }
 
 void App::pose_vicon_cb(const geometry_msgs::PoseStampedConstPtr& msg){
