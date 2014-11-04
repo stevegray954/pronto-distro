@@ -103,30 +103,29 @@ App::App(ros::NodeHandle node_, bool send_ground_truth_) :
   }
 
   // Atlas Joints and FT sensor
-  joint_states_sub_ = node_.subscribe(string("joint_states"), 100, &App::joint_states_cb,this);
+  joint_states_sub_ = node_.subscribe(string("/controller_mgr/joint_states"), 1, &App::joint_states_cb,this);
 
   // The position and orientation from BDI's own estimator (or GT from Gazebo):
   if (send_ground_truth_){
-    pose_bdi_sub_ = node_.subscribe(string("/ground_truth_odom"), 100, &App::pose_bdi_cb,this);
+    pose_bdi_sub_ = node_.subscribe(string("/ground_truth_odom"), 1, &App::pose_bdi_cb,this);
   }else{
-    //pose_bdi_sub_ = node_.subscribe(string("/controller_mgr/bdi_odom"), 100, &App::pose_bdi_cb,this);
-    pose_bdi_sub_ = node_.subscribe(string("/robot_pose_service/odom"), 100, &App::pose_bdi_cb,this);
+    pose_bdi_sub_ = node_.subscribe(string("/controller_mgr/odom"), 1, &App::pose_bdi_cb,this);
   }
-  pose_vicon_sub_ = node_.subscribe(string("/vicon/pelvis"), 100, &App::pose_vicon_cb,this);
+  pose_vicon_sub_ = node_.subscribe(string("/vicon/pelvis"), 1, &App::pose_vicon_cb,this);
 
 
   // Multisense Joint Angles:
-  head_joint_states_sub_ = node_.subscribe(string("/spindle_state"), 100, &App::head_joint_states_cb,this);
+  head_joint_states_sub_ = node_.subscribe(string("/spindle_state"), 1, &App::head_joint_states_cb,this);
 
   // Laser:
-  rotating_scan_sub_ = node_.subscribe(string("/multisense_sl/laser/scan"), 100, &App::rotating_scan_cb,this);
+  rotating_scan_sub_ = node_.subscribe(string("/multisense_sl/laser/scan"), 1, &App::rotating_scan_cb,this);
 
   // LM:
-  foot_sensor_sub_ = node_.subscribe(string("/foot_contact_service/foot_sensor"), 100, &App::foot_sensor_cb,this);
-  imu_sub_ = node_.subscribe(string("/imu_publisher_service/imu"), 100, &App::imu_cb,this);
-  imu_batch_sub_ = node_.subscribe(string("/imu_publisher_service/raw_imu"), 100, &App::imu_batch_cb,this);
+  foot_sensor_sub_ = node_.subscribe(string("/controller_mgr/foot_sensor"), 1, &App::foot_sensor_cb,this);
+  imu_sub_ = node_.subscribe(string("/controller_mgr/imu"), 1, &App::imu_cb,this);
+  imu_batch_sub_ = node_.subscribe(string("/controller_mgr/raw_imu"), 1, &App::imu_batch_cb,this);
 
-  behavior_sub_ = node_.subscribe(string("/current_behavior"), 100, &App::behavior_cb,this);
+  behavior_sub_ = node_.subscribe(string("/controller_mgr/current_behavior"), 1, &App::behavior_cb,this);
   verbose_ = false;
 };
 
@@ -200,10 +199,10 @@ void App::pose_bdi_cb(const nav_msgs::OdometryConstPtr& msg){
   pose_msg.orientation[2] =  msg->pose.pose.orientation.y;
   pose_msg.orientation[3] =  msg->pose.pose.orientation.z;
 
-  // This transformation is NOT correct for Trooper
   // April 2014: added conversion to body frame - so that both rates are in body frame
   Eigen::Matrix3d R = Eigen::Matrix3d( Eigen::Quaterniond( msg->pose.pose.orientation.w, msg->pose.pose.orientation.x,
                                                            msg->pose.pose.orientation.y, msg->pose.pose.orientation.z ));
+
   Eigen::Vector3d lin_body_vel  = R*Eigen::Vector3d ( msg->twist.twist.linear.x, msg->twist.twist.linear.y,
                                                       msg->twist.twist.linear.z );
   pose_msg.vel[0] = lin_body_vel[0];
@@ -215,6 +214,7 @@ void App::pose_bdi_cb(const nav_msgs::OdometryConstPtr& msg){
   pose_msg.rotation_rate[0] = msg->twist.twist.angular.x;
   pose_msg.rotation_rate[1] = msg->twist.twist.angular.y;
   pose_msg.rotation_rate[2] = msg->twist.twist.angular.z;
+
   // prefer to take all the info from one source
 //  pose_msg.rotation_rate[0] = imu_msg_.angular_velocity.x;
 //  pose_msg.rotation_rate[1] = imu_msg_.angular_velocity.y;
@@ -295,9 +295,12 @@ void App::head_joint_states_cb(const sensor_msgs::JointStateConstPtr& msg){
 
 void App::sendMultisenseState(int64_t utime, float position, float velocity){
   pronto::multisense_state_t msg_out;
+
   msg_out.utime = utime;
+
+  msg_out.joint_name.resize(13);
+
   for (std::vector<int>::size_type i = 0; i < 13; i++)  {
-    msg_out.joint_name.push_back("z");      
     msg_out.joint_position.push_back(0);      
     msg_out.joint_velocity.push_back(0);
     msg_out.joint_effort.push_back(0);
@@ -317,8 +320,8 @@ void App::sendMultisenseState(int64_t utime, float position, float velocity){
   msg_out.joint_name[6] = "pre_spindle_cal_yaw_joint";
 
   msg_out.joint_name[7] = "post_spindle_cal_x_joint";
-  msg_out.joint_name[8] = "post_spindle_cal_x_joint";
-  msg_out.joint_name[9] = "post_spindle_cal_x_joint";
+  msg_out.joint_name[8] = "post_spindle_cal_y_joint";
+  msg_out.joint_name[9] = "post_spindle_cal_z_joint";
 
   msg_out.joint_name[10] = "post_spindle_cal_roll_joint";
   msg_out.joint_name[11] = "post_spindle_cal_pitch_joint";
@@ -334,71 +337,8 @@ inline int  getIndex(const std::vector<std::string> &vec, const std::string &str
 
 int js_counter=0;
 void App::joint_states_cb(const sensor_msgs::JointStateConstPtr& msg){
-/*
-arms joint mapping is entered properly
 
-in, in_name, out
-0, r_arm_shx, 16
-1, r_arm_elx, 17
-2, r_leg_akx, 15
-3, back_bkx, 2
-4, l_arm_wry, 18
-5, r_leg_hpy, 12
-9, r_arm_wry, 19
-10, l_leg_kny, 7
-13, l_arm_elx, 20
-16, r_leg_aky, 14
-20, l_arm_shy, 21
-23, r_leg_kny, 13
-24, r_arm_wrx, 22
-26, l_leg_akx, 9
-27, l_arm_ely, 23
-28, l_arm_wrx, 24
-29, l_leg_hpx, 5
-30, l_leg_hpy, 6
-31, l_leg_hpz, 4
-34, r_leg_hpx, 11
-35, l_arm_shx, 25
-40, back_bky, 1
-42, r_arm_shy, 26
-43, neck_ry, 3
-45, r_leg_hpz, 10
-47, back_bkz, 0
-48, l_leg_aky, 8
-49, r_arm_ely, 27
-*/
   std::vector< std::pair<int,int> > jm;
-
-/*
-jm.push_back (  std::make_pair(	0	,	16	));
-jm.push_back (  std::make_pair(	1	,	17	));
-jm.push_back (  std::make_pair(	2	,	15	));
-jm.push_back (  std::make_pair(	3	,	2	));
-jm.push_back (  std::make_pair(	4	,	18	));
-jm.push_back (  std::make_pair(	5	,	12	));
-jm.push_back (  std::make_pair(	9	,	19	));
-jm.push_back (  std::make_pair(	10	,	7	));
-jm.push_back (  std::make_pair(	13	,	20	));
-jm.push_back (  std::make_pair(	16	,	14	));
-jm.push_back (  std::make_pair(	20	,	21	));
-jm.push_back (  std::make_pair(	23	,	13	));
-jm.push_back (  std::make_pair(	24	,	22	));
-jm.push_back (  std::make_pair(	26	,	9	));
-jm.push_back (  std::make_pair(	27	,	23	));
-jm.push_back (  std::make_pair(	28	,	24	));
-jm.push_back (  std::make_pair(	29	,	5	));
-jm.push_back (  std::make_pair(	30	,	6	));
-jm.push_back (  std::make_pair(	31	,	4	));
-jm.push_back (  std::make_pair(	34	,	11	));
-jm.push_back (  std::make_pair(	35	,	25	));
-jm.push_back (  std::make_pair(	40	,	1	));
-jm.push_back (  std::make_pair(	42	,	26	));
-jm.push_back (  std::make_pair(	43	,	3	));
-jm.push_back (  std::make_pair(	45	,	10	));
-jm.push_back (  std::make_pair(	47	,	0	));
-jm.push_back (  std::make_pair(	48	,	8	));
-jm.push_back (  std::make_pair(	49	,	27	)); */
-
 
   jm.push_back (  std::make_pair( getIndex(msg->name, "r_arm_shx") , 16  ));
   jm.push_back (  std::make_pair( getIndex(msg->name, "r_arm_elx") , 17  ));
@@ -461,7 +401,6 @@ jm.push_back (  std::make_pair(	49	,	27	)); */
     msg_out.joint_effort[ jm[i].second ] = msg->effort[ jm[i].first ];
   }
 
-
   // Append FT sensor info
   pronto::force_torque_t force_torque;
   appendFootSensor(force_torque, foot_sensor_);
@@ -472,8 +411,6 @@ jm.push_back (  std::make_pair(	49	,	27	)); */
   int64_t joint_utime = (int64_t) msg->header.stamp.toNSec()/1000; // from nsec to usec
   utime_msg.utime = joint_utime;
   lcm_publish_.publish("ROBOT_UTIME", &utime_msg); 
-
-  //sendMultisenseState(joint_utime, msg->position[22], 0);
 
   last_joint_state_utime_ = joint_utime;
 }
