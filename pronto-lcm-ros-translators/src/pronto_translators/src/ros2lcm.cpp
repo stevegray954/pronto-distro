@@ -231,7 +231,7 @@ void App::pose_bdi_cb(const nav_msgs::OdometryConstPtr& msg){
 
 void App::pose_vicon_cb(const geometry_msgs::PoseStampedConstPtr& msg){
   bot_core::pose_t pose_msg;
-  pose_msg.utime = (int64_t) floor(msg->header.stamp.toNSec()/1000);
+  pose_msg.utime = last_joint_state_utime_;//(int64_t) floor(msg->header.stamp.toNSec()/1000);
   pose_msg.pos[0] = msg->pose.position.x;
   pose_msg.pos[1] = msg->pose.position.y;
   pose_msg.pos[2] = msg->pose.position.z;
